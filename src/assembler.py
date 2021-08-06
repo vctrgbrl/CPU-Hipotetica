@@ -1,3 +1,5 @@
+from sys import argv
+
 class Assembler:
 
     MAX_VALUE = 2**15 - 1
@@ -14,7 +16,7 @@ class Assembler:
     }
 
     registers = {
-        'pc'  : 0x00,
+        'reg0': 0x00,
         'reg1': 0x01,
         'reg2': 0x02,
         'reg3': 0x03,
@@ -24,7 +26,7 @@ class Assembler:
         'reg7': 0x07,
     }
 
-    disRegisters = ['pc','reg1','reg2','reg3','reg4','reg5','reg6','reg7']
+    disRegisters = ['reg0','reg1','reg2','reg3','reg4','reg5','reg6','reg7']
     disInstuctions = ['add','addi','lw','sw','beq','err','halt','noop']
 
     def __init__(self):
@@ -43,7 +45,7 @@ class Assembler:
             print("Error, file not found")
         return
 
-    def SaveProgram(self, name: str):
+    def SaveBin(self, name: str):
         if self.exception:
             return
         if self.compiledProgram == "":
@@ -73,7 +75,13 @@ class Assembler:
                 lines.remove(l)
         self.lines = lines
 
-    def Assemble(self, program: str):
+    def Assemble(self, program: str = ""):
+        if program == "":
+            program = self.program
+        if program == "":
+            print("No program")
+            self.exception = True
+            return
         self.exception = False
         counter = -1
         self.CleanProgram(program)
@@ -125,7 +133,8 @@ class Assembler:
                 label = opcodes[i + 3]
                 if label in self.definedLabels:
                     address = self.definedLabels[label]
-                    mask += address - counter - 1
+                    deloc = (address - counter - 1).to_bytes(2, byteorder='big', signed=True)
+                    mask += int.from_bytes(deloc, byteorder='big')
                 else:
                     if not label in self.lookingforLabels:
                         self.lookingforLabels[label] = []
@@ -159,6 +168,7 @@ class Assembler:
             oper >>= 22
             parmB >>= 19
             parmC >>= 16
+            nib16 = int.from_bytes( nib16.to_bytes(2,'big'), byteorder='big', signed=True)
 
             if oper == 0:
                 line = 'add'+' '+Assembler.disRegisters[parmB]+' '+ Assembler.disRegisters[parmC]+' '+Assembler.disRegisters[last3]
@@ -171,18 +181,16 @@ class Assembler:
         return lines
 
 asm = Assembler()
-program = """
-        beq reg3 reg1 ELSE
-        add reg3 reg1 reg4
 
-        beq reg1 reg1 EXIT
-ELSE    add reg3 reg2 reg4
-EXIT    halt"""
-by = asm.Assemble(program)
-# asm.SaveProgram("out.bin")
-print(by)
+fileinPath = argv[1]
+fileoutPath = argv[2]
 
-# binFile = open("out.bin", "rb")
-# binary = binFile.read()
-# disassembled = asm.Disassemble(binary)
-# print(disassembled)
+# binary = open(fileinPath, "rb").read()
+# program = asm.Disassemble(binary)
+# with open(fileoutPath, 'w') as file:
+#     for line in program:
+#         file.write(line + "\n")
+
+asm.LoadProgram(fileinPath)
+asm.Assemble()
+asm.SaveBin(fileoutPath)
