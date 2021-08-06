@@ -4,8 +4,9 @@ Assembler e Emulador de uma CPU Hipotética, baseada na arquitetura MIPS,
 estudada no curso de Fundamentos de Arquiteturas de Computadores, UFF
 
 
-A CPU tem 7 registradores, todos com uma palavra de 32 bits
+A CPU tem 8 registradores
 PC - Program Counter
+IR - Intruction Register
 Reg1
 Reg2
 Reg3
