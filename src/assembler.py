@@ -31,7 +31,9 @@ class Assembler:
         self.program = ""
         self.lines = []
         self.compiledProgram = []
-        self.labels = {} # 'LABEL' : ( ADDRESS: int, lookingFor: boolean )
+        self.definedLabels = {} # 'LABEL' : ADDRESS: int
+        self.lookingforLabels = {} # 'LABEL': [ADRESSES]
+        self.exception = False
 
     def LoadProgram(self, path: str):
         try:
@@ -41,55 +43,27 @@ class Assembler:
             print("Error, file not found")
         return
 
-    def CheckError(self, opcodes, instruction):
-        pass
+    def SaveProgram(self, name: str):
+        if self.exception:
+            return
+        if self.compiledProgram == "":
+            return
+        with open(name, 'wb') as file:
+            for l in self.compiledProgram:
+                file.write(l)
 
-    def EvalLine(self, address, labelResolve):
-        line = self.lines[address]
-        opcodes = line.split()
-        mask = 0
-        op = Assembler.instructions[opcodes[0]]
-        regA = Assembler.registers[opcodes[1]]
-        regB = Assembler.registers[opcodes[2]]
-        deloc = labelResolve - address - 1
-        mask += deloc
-        mask += regB << 16
-        mask += regA << 19
-        mask += op << 22
-        self.compiledProgram.insert(
-            address, 
-            mask.to_bytes(4, byteorder='big')
-        )
-
-    def EvaluateLine(self, i, opcodes, label = 0):
-
-        mask = 0
-        op = Assembler.instructions[opcodes[i]]
-        mask += op << 22
-
-        if op != 'noop' and op != 'halt':
-            regA = Assembler.registers[opcodes[i + 1]]
-            regB = Assembler.registers[opcodes[i + 2]]
-            mask += regA << 19
-            mask += regB << 16
-        if op == 'add':
-            
-            regC = Assembler.registers[opcodes[i + 3]]
-            mask += regC
-
-        elif op == 'addi' or op=='lw' or op=='sw':
-            nib16 = int(opcodes[i + 3])
-            nC = nib16.to_bytes(2, byteorder='big',signed=True)
-            mask += int.from_bytes(nC, 'big')
-        
-        elif op == 'beq':
-            label = opcodes[i + 3]
-            if not label in self.labels:
-                self.labels[label] = (counter, True)
-                continue
-            address = self.labels[label][0]
-
-        self.compiledProgram.append(mask.to_bytes(4, byteorder='big'))
+    def ThrowError(self, code, line, extra):
+        # Redefinição de Label
+        self.exception = True
+        if code == 100:
+            print(f"Redefinição de Label '{extra}'")
+        elif code == 101:
+            print(f"Label não definida '{extra}'")
+        elif code == 400:
+            print(f"Registrador '{extra}' não existente")
+        elif code == 500:
+            print(f"Instrução inexperada '{extra}'")
+        print(f"linha: {line}")
 
     def CleanProgram(self, program:str):
         lines = program.split("\n")
@@ -100,7 +74,7 @@ class Assembler:
         self.lines = lines
 
     def Assemble(self, program: str):
-        
+        self.exception = False
         counter = -1
         self.CleanProgram(program)
         
@@ -113,77 +87,63 @@ class Assembler:
             # Se a primeira palavra da linha não for um OP Code
             # Será compreendido como um Label
             if not opcodes[i] in Assembler.instructions:
-                if (opcodes[i] in self.labels):
-                    address = self.labels[opcodes[i]][0]
-                    self.EvalLine(address, counter)
-                else:
-                    self.labels[opcodes[i]] = (counter, False)
+                if (opcodes[i] in self.definedLabels):
+                    self.ThrowError(100, counter, opcodes[i])
+                    break
+                elif (opcodes[i] in self.lookingforLabels):
+                    addresses = self.lookingforLabels[opcodes[i]]
+                    for a in addresses:
+                        instruct = int.from_bytes(self.compiledProgram[a], byteorder='big')
+                        instruct += counter - a - 1
+                        self.compiledProgram[a] = instruct.to_bytes(4, byteorder='big')
+                    del self.lookingforLabels[opcodes[i]]
+                        
+                self.definedLabels[opcodes[i]] = counter
                 i += 1
 
-            if (opcodes[i] == 'add'):
-                mask = 0
-                op = Assembler.instructions[opcodes[i]]
-                regA = Assembler.registers[opcodes[i + 1]]
-                regB = Assembler.registers[opcodes[i + 2]]
+            mask = 0
+            op = Assembler.instructions[opcodes[i]]
+            mask += op << 22
+
+            if opcodes[i] != 'noop' and opcodes[i] != 'halt':
+                try:
+                    regA = Assembler.registers[opcodes[i + 1]]
+                    regB = Assembler.registers[opcodes[i + 2]]
+                except Exception:
+                    self.ThrowError(400, counter, opcodes[i+1])
+                    break
+                mask += regA << 19
+                mask += regB << 16
+            if opcodes[i] == 'add':
                 regC = Assembler.registers[opcodes[i + 3]]
-                
                 mask += regC
-                mask += regB << 16
-                mask += regA << 19
-                mask += op << 22
-                self.compiledProgram.append(mask.to_bytes(4, byteorder='big'))
-
-            elif opcodes[i] == 'addi':
-                mask = 0
-                op = Assembler.instructions[opcodes[i]]
-                regA = Assembler.registers[opcodes[i + 1]]
-                regB = Assembler.registers[opcodes[i + 2]]
-                regC = int(opcodes[i + 3])
-                nC = regC.to_bytes(2, byteorder='big',signed=True)
+            elif opcodes[i] == 'addi' or opcodes[i] =='lw' or opcodes[i]=='sw':
+                nib16 = int(opcodes[i + 3])
+                nC = nib16.to_bytes(2, byteorder='big',signed=True)
                 mask += int.from_bytes(nC, 'big')
-                mask += regB << 16
-                mask += regA << 19
-                mask += op << 22
-                self.compiledProgram.append(mask.to_bytes(4, byteorder='big'))
-
-            elif (opcodes[i] == 'lw' or opcodes[i] == 'sw'):
-                mask = 0
-                op = Assembler.instructions[opcodes[i]]
-                regA = Assembler.registers[opcodes[i + 1]]
-                regB = Assembler.registers[opcodes[i + 2]]
-                mem = int(opcodes[i + 3])
-                nC = mem.to_bytes(2, byteorder='big',signed=True)
-                mask += int.from_bytes(nC, 'big')
-                mask += regB << 16
-                mask += regA << 19
-                mask += op << 22
-                self.compiledProgram.append(mask.to_bytes(4, byteorder='big'))
-
             elif opcodes[i] == 'beq':
-                mask = 0
-                op   = Assembler.instructions[opcodes[i]]
-                regA = Assembler.registers[opcodes[i + 1]]
-                regB = Assembler.registers[opcodes[i + 2]]
                 label = opcodes[i + 3]
-                if not label in self.labels:
-                    self.labels[label] = (counter, True)
-                    continue
-                address = self.labels[label][0]
+                if label in self.definedLabels:
+                    address = self.definedLabels[label]
+                    mask += address - counter - 1
+                else:
+                    if not label in self.lookingforLabels:
+                        self.lookingforLabels[label] = []
+                    self.lookingforLabels[label].append(counter)
+            elif  opcodes[i] != 'noop' and opcodes[i] != 'halt':
+                self.ThrowError(500, counter, opcodes[i])
+            self.compiledProgram.append(mask.to_bytes(4, byteorder='big'))
 
-                mask += address - counter - 1
-                mask += regB << 16
-                mask += regA << 19
-                mask += op << 22
-                self.compiledProgram.append(mask.to_bytes(4, byteorder='big'))
+        if len(self.lookingforLabels) > 0:
+            for label, addresses in self.lookingforLabels.items():
+                for a in addresses:
+                    self.ThrowError(101, a, label)
 
-            elif opcodes[i] == 'noop' or opcodes[i] == 'halt':
-                mask = 0
-                mask += Assembler.instructions[opcodes[i]] << 22
-                self.compiledProgram.append(mask.to_bytes(4, byteorder='big'))
-        
+        if self.exception:
+            return []
         return self.compiledProgram
 
-    def Disassemble(self, program):
+    def Disassemble(self, program: bytes):
         length = len(program)
         i = 0
         lines = []
@@ -212,17 +172,17 @@ class Assembler:
 
 asm = Assembler()
 program = """
-        beq reg3 reg1 ELSE - 0000 000 100 011 001 0000 0000 0000 0010
-        add reg3 reg1 reg4 - 0000 000 000 011 001 0000 0000 0000 0 100
+        beq reg3 reg1 ELSE
+        add reg3 reg1 reg4
 
-        beq reg1 reg1 EXIT - 0000 000 100 001 001 0000 0000 0000 0001
-ELSE    add reg3 reg2 reg4 - 0000 000 000 011 010 0000 0000 0000 0 100
-EXIT    halt               - 0000 000 110 000 000 0000 0000 0000 0000
-"""
-# by = asm.Assemble(program)
+        beq reg1 reg1 EXIT
+ELSE    add reg3 reg2 reg4
+EXIT    halt"""
+by = asm.Assemble(program)
+# asm.SaveProgram("out.bin")
+print(by)
 
-binaryFile = open("out.bin", "rb")
-binary = binaryFile.read()
-code = asm.Disassemble(binary)
-
-print(code)
+# binFile = open("out.bin", "rb")
+# binary = binFile.read()
+# disassembled = asm.Disassemble(binary)
+# print(disassembled)
