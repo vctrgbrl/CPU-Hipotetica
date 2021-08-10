@@ -1,18 +1,20 @@
 # CPU Hipotética
 
 Assembler e Emulador de uma CPU Hipotética, baseada na arquitetura MIPS, 
-estudada no curso de Fundamentos de Arquiteturas de Computadores, UFF
+estudada na matéria de Fundamentos de Arquiteturas de Computadores, Ciência da Computação, UFF
 
 
-A CPU tem 8 registradores
+A CPU tem 10 registradores, 2 especiais e 8 auxiliares
 PC - Program Counter
 IR - Intruction Register
+Reg0
 Reg1
 Reg2
 Reg3
 Reg4
 Reg5
 Reg6
+Reg7
 
 ## Instruction Set
 
