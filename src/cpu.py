@@ -1,9 +1,11 @@
 import sys
+import os
 
 memory = bytearray(4 * 2**16)
 breaks = {0x0000}
 program: bytes
 halt = False
+init = False
 instructions = {
     'add'   : 0x00,
     'addi'  : 0x01, 
@@ -88,8 +90,10 @@ def print_mem(address, r=4):
             print(f"{memory[ (address+i) * 4 + j]:02x}", end=" ")
         print("")
 
-def set_reg(reg, value):
+def set_reg(args: list):
     global pc
+    reg = args[0]
+    value = int(args[1])
     maps = {
         'reg0' : 0x00,
         'reg1' : 0x01,
@@ -105,7 +109,7 @@ def set_reg(reg, value):
     else:
         registers[maps[reg]] = value
 
-def print_status():
+def print_status(args: list):
     global registers, ir, pc
     disRegisters = ['reg0','reg1','reg2','reg3','reg4','reg5','reg6','reg7']
     i = 0
@@ -116,34 +120,90 @@ def print_status():
         print(disRegisters[i], f'{reg:08x}')
         i+=1
 
-def run():
+def run(args: list):
     global halt, memory, registers, breaks, pc
     while not halt:
         clock()
         if pc in breaks:
+            breaks.remove(pc)
+            print_mem(pc)
+            print_status([])
             break
 
-# 1000  00 00 00 00
-# 0000  00 00 00 00
-# 0000  00 00 00 00
-# 0000  00 00 00 00
+def help(args: list):
+    print(
+    """
+    >> help - display de commandos
+    >> load - carrega um arquivo binario na memoria no endereço 0000
+    >> dis - faz o disassemble do programa próximo ao registrador pc
+    >> step - executa um ciclo
+    >> run - executa até achar um break
+    >> break [endereço] - marca um local da memória
+    >> set [registrador|endereço] [valor] - força um valor no registrador/memoria
+    >> print memory [endereço] - mostra a memoria no determinado endereço  
+    >> status - mostra status dos registradores
 
-# >> help
-# >> dis
-# >> clear
-# >> step
-# >> run
-# >> set
-# >> print memory
-# >> print *pc
-# >> print *reg2
-# >> status check
+    OBS: endereços devem ser setados como inteiros
 
-program = open(sys.argv[1],'rb').read()
-load_program(program)
+    """)
+
+def clear(args: list):
+    os.system("clear")
+
+def exit(args: list):
+    global halt
+    halt = True
+    return
+
+def interface_print(args: list):
+    if(args[0] == "memory"):
+        print_mem(int(args[1]))
+        return
+
+def open_program(args: list):
+    global program, init
+    try:
+        prog = open(args[0],'rb')
+        program = prog.read()
+        print("carreagado com sucesso")
+        load_program(program)
+        init = True
+    except FileNotFoundError:
+        print(f"programa {args[0]} não encontrado")
+
+def break_at(args: list):
+    global breaks
+    address = int(args[0])
+    breaks.add(address)
+
+def step(args: list):
+    clock()
+
+def command(cmd: list):
+    interfaces_commands = {
+        'help': help,
+        'clear': clear,
+        'set': set_reg,
+        'status': print_status,
+        'print': interface_print,
+        'exit': exit,
+        'load': open_program,
+        'run': run,
+        'step': step,
+        'break': break_at
+    }
+    if not cmd[0] in interfaces_commands:
+        print(f"comando inexperado: {cmd[0]}")
+        return
+    args = cmd[1:]
+    interfaces_commands[cmd[0]](args)
+
+if len(sys.argv) == 2:
+    open_program(sys.argv)
 
 while not halt:
-    input()
-    clock()
-    print_mem(0,6)
-    print_status()
+    print(">>", end=" ")
+    cmd = input()
+    if cmd == "":
+        continue
+    command(cmd.split())
